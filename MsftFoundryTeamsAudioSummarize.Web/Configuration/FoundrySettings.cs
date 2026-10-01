@@ -2,7 +2,7 @@ namespace MsftFoundryTeamsAudioSummarize.Web.Configuration;
 
 /// <summary>
 /// App registration #2: identity used to call Microsoft Foundry (Speech to Text + Agent Service).
-/// Requires "Cognitive Services Speech User" and "Foundry User" roles on the Foundry resource.
+/// Requires the "Foundry User" role on the Foundry resource (covers Speech and Agent Service).
 /// </summary>
 public sealed class FoundrySettings
 {

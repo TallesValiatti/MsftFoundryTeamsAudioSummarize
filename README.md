@@ -19,7 +19,6 @@ Teams ◄──────── summary ◄───────────�
 | `teams/` | Teams manifest, icons and packaging instructions |
 | `agent-instructions.md` | Instructions (with few-shot examples) for the Foundry agent |
 | `deploy.sh` | Publishes and ZIP-deploys the backend to App Service |
-| `Articles/raw.md` | Article outline |
 
 ## How it works
 
@@ -40,7 +39,7 @@ Two app registrations, each with a single responsibility:
 | Bot | `<bot-app-id>` | Teams manifest, Azure Bot Service, `/api/messages` auth |
 | Foundry | `<foundry-app-id>` | Speech to Text + Agent Service |
 
-Roles for the Foundry app on the Foundry **resource** (assigned by a Foundry Owner). Speech is called on the resource endpoint, so `Cognitive Services Speech User` must be on the resource, not only on the project:
+The Foundry app needs **Foundry User** on the Foundry **resource** (not only on the project), assigned by a Foundry Owner:
 
 ```bash
 FOUNDRY_APP_ID="<foundry-app-id>"
@@ -48,9 +47,12 @@ RESOURCE_GROUP="<resource-group>"
 FOUNDRY_RESOURCE="<foundry-resource>"
 SCOPE=$(az cognitiveservices account show -g "$RESOURCE_GROUP" -n "$FOUNDRY_RESOURCE" --query id -o tsv)
 
-az role assignment create --assignee "$FOUNDRY_APP_ID" --role "Cognitive Services Speech User" --scope "$SCOPE"
 az role assignment create --assignee "$FOUNDRY_APP_ID" --role "Foundry User" --scope "$SCOPE"
 ```
+
+- **Resource scope**: Speech is called on the resource endpoint (`*.cognitiveservices.azure.com`); a role assigned only on the project does not apply to it.
+- **Foundry User** (`Microsoft.CognitiveServices/*`) covers both the Agent Service and the Speech `transcriptions:transcribe` API. `Cognitive Services Speech User` alone returns `401 PermissionDenied` for this API. For a Speech-only alternative, use `Cognitive Services Speech Contributor`.
+- RBAC changes can take a few minutes to apply. No restart or redeploy is needed.
 
 ## Configuration
 
@@ -89,6 +91,20 @@ dotnet run
 ```
 
 Expose it with a tunnel (e.g. `devtunnel host -p 5258 --allow-anonymous`) and point the bot messaging endpoint to `<tunnel>/api/messages`. Health check: `/health`.
+
+## Troubleshooting
+
+Failures are logged with the service status and error body (App Service → Log stream).
+
+| Log | Cause | Fix |
+|---|---|---|
+| `Missing required configuration key '...'` | Setting missing or still a `<placeholder>` | Set the environment variable |
+| `Name or service not known (<host>:443)` | Wrong endpoint host | `Foundry__SpeechEndpoint` must be `https://<foundry-resource>.cognitiveservices.azure.com/` (no `.ai`); `Foundry__ProjectEndpoint` uses `services.ai.azure.com` |
+| Speech `401 PermissionDenied` — *Principal does not have access to API/Operation* | Missing role or wrong scope | Assign **Foundry User** on the Foundry resource (see [Identities](#identities)) |
+| Agent `401`/`403` | Foundry app has no access to the project | Same as above |
+| Agent `400 unsupported_parameter: 'reasoning.effort'` | The agent has a reasoning effort set, but its model does not support it | In the Foundry portal, clear **Reasoning effort** in the agent's model settings and save |
+| Speech `401` right after a role change | Role still propagating | Wait a few minutes and retry |
+| Bot never answers | Messaging endpoint or Teams channel not configured | See [Setup](#setup), step 3 |
 
 ## Limitation: channels and group chats
 
