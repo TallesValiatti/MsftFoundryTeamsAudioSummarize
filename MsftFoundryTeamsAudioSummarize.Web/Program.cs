@@ -30,8 +30,16 @@ builder.Services.AddSingleton<AdapterWithErrorHandler>();
 builder.Services.AddSingleton<IBotFrameworkHttpAdapter>(sp => sp.GetRequiredService<AdapterWithErrorHandler>());
 builder.Services.AddSingleton<CloudAdapter>(sp => sp.GetRequiredService<AdapterWithErrorHandler>());
 
-builder.Services.AddHttpClient(nameof(AudioDownloader), client => client.Timeout = TimeSpan.FromMinutes(5));
+builder.Services.AddHttpClient(nameof(AudioDownloader), client => client.Timeout = TimeSpan.FromMinutes(5))
+    .RemoveAllLoggers();
 builder.Services.AddSingleton<AudioDownloader>();
+builder.Services.AddHttpClient(nameof(GraphAudioService), client => client.Timeout = TimeSpan.FromSeconds(30))
+    .RemoveAllLoggers()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddSingleton(sp => new GraphAudioService(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(GraphAudioService)),
+    new ClientSecretCredential(botSettings.TenantId, botSettings.AppId, botSettings.AppPassword),
+    builder.Configuration.GetValue<bool>("Graph:Enabled")));
 builder.Services.AddSingleton<SpeechTranscriptionService>();
 builder.Services.AddSingleton<SummarizerAgentService>();
 builder.Services.AddTransient<IBot, AudioSummarizerBot>();

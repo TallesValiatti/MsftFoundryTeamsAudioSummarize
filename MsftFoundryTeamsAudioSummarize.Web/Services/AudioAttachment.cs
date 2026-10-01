@@ -68,14 +68,16 @@ public sealed record AudioAttachment(string FileName, Uri DownloadUrl, bool Requ
     }
 
     /// <summary>
-    /// In channels and group chats Teams shares files as "reference" attachments (a SharePoint/OneDrive link)
-    /// instead of a downloadable file. Reading them requires Microsoft Graph, so they are detected only to
-    /// reply with a helpful message.
+    /// Detects audio references for setup guidance when no downloadable attachment is available.
+    /// Shared conversations can also omit references entirely; Graph retrieves the original message.
     /// </summary>
     public static bool HasAudioReference(IEnumerable<Attachment>? attachments) =>
         attachments?.Any(attachment =>
             string.Equals(attachment.ContentType, "reference", StringComparison.OrdinalIgnoreCase)
             && IsSupported(Path.GetExtension(attachment.Name)?.TrimStart('.'))) == true;
+
+    public static bool IsSupportedFileName(string? name) =>
+        IsSupported(Path.GetExtension(name)?.TrimStart('.'));
 
     private static bool IsSupported(string? extension) =>
         !string.IsNullOrWhiteSpace(extension) && SupportedExtensions.Contains(extension);

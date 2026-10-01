@@ -19,4 +19,4 @@ Bump `version` in `manifest.json` before each re-upload.
 3. Select `teams/audio-summarizer.zip` and confirm.
 4. Make the agent available to the users who need it.
 
-Users can then add **Audio Summarizer** to a personal chat, group chat or team channel (public or private). Audio files are summarized in personal chat; see the main README for the channel/group chat limitation.
+Users can then add **Audio Summarizer** to a personal chat, group chat or team channel (public or private). Personal chat audio works directly. Group chat and channel audio require the Microsoft Graph permissions and `Graph__Enabled=true` setup described in the main README. Attach the audio and @mention the bot in the same message.

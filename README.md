@@ -23,7 +23,7 @@ Teams ◄──────── summary ◄───────────�
 ## How it works
 
 1. `BotController` (`/api/messages`) validates the Azure Bot Service token.
-2. `AudioSummarizerBot` looks for an audio attachment. No audio → fixed message.
+2. `AudioSummarizerBot` looks for an audio attachment. In shared chats, optional Graph retrieval reads the triggering message and resolves its file. No audio → guidance.
 3. It replies "processing" right away and continues in the background (Azure Bot Service times out after ~15 s).
 4. `AudioDownloader` downloads the file → `SpeechTranscriptionService` transcribes it → `SummarizerAgentService` calls the Foundry agent (single-turn, Responses API).
 5. The summary is sent back with a proactive message.
@@ -36,7 +36,7 @@ Two app registrations, each with a single responsibility:
 
 | App | Id | Used for |
 |---|---|---|
-| Bot | `<bot-app-id>` | Teams manifest, Azure Bot Service, `/api/messages` auth |
+| Bot | `<bot-app-id>` | Teams manifest, Azure Bot Service, `/api/messages` auth, optional Graph file retrieval |
 | Foundry | `<foundry-app-id>` | Speech to Text + Agent Service |
 
 The Foundry app needs **Foundry User** on the Foundry **resource** (not only on the project), assigned by a Foundry Owner:
@@ -106,6 +106,31 @@ Failures are logged with the service status and error body (App Service → Log 
 | Speech `401` right after a role change | Role still propagating | Wait a few minutes and retry |
 | Bot never answers | Messaging endpoint or Teams channel not configured | See [Setup](#setup), step 3 |
 
-## Limitation: channels and group chats
+## Audio in other chats and channels
 
-The bot can be added to personal chats, group chats and channels (public and private), but Teams only delivers **downloadable** files to bots in **personal chat**. In channels and group chats a file arrives as a SharePoint/OneDrive link, which would require Microsoft Graph permissions; the bot detects it and asks the user to send the audio in a personal chat.
+Personal chat uploads work without Graph. For group chats and channels, enable Microsoft Graph retrieval. The bot reads the **triggering message**, resolves its audio reference through OneDrive/SharePoint, and downloads it before running the existing transcription and summary pipeline.
+
+### Setup
+
+1. In Entra ID, open the **Bot app registration** (`MicrosoftAppId`, not the Foundry app).
+2. Under **API permissions**, add Microsoft Graph **Application** permissions:
+   - `Chat.Read.All` to retrieve the triggering chat message.
+   - `ChannelMessage.Read.All` if channel support is needed.
+   - `Files.ReadWrite.All` for the Graph `/shares/{encodedUrl}/driveItem` endpoint. Microsoft documents this as the least privileged application permission for that endpoint, even though this implementation only makes GET requests.
+3. Have a tenant administrator **grant admin consent**. These are tenant-wide permissions: chat/channel message access and read/write file access. Adding the bot to a chat does not grant these permissions.
+4. Set `Graph__Enabled=true` in App Service environment variables and deploy the updated backend. Graph uses the existing `MicrosoftAppTenantId`, `MicrosoftAppId`, and `MicrosoftAppPassword` settings.
+5. Attach an audio file and **@mention Audio Summarizer in the same message** in the other chat or channel. Mentioning the bot in a separate message does not select an earlier file. Only the first supported audio attachment is processed.
+
+No manifest change is required for the existing `groupChat` and `team` scopes. This implementation targets the Microsoft public cloud and files accessible in the bot's tenant; cross-tenant/shared-channel file access is not guaranteed.
+
+When Graph is disabled, shared chats get setup guidance. Permission errors get a specific reply. Graph lookup runs in the background to keep the bot webhook responsive. Personal audio uploads still use their original download path.
+
+References: [Get a chat or channel message](https://learn.microsoft.com/en-us/graph/api/chatmessage-get?view=graph-rest-1.0), [Resolve shared files and required permissions](https://learn.microsoft.com/en-us/graph/api/shares-get?view=graph-rest-1.0).
+
+### Local regression checks
+
+```bash
+dotnet run --project tests/GraphAudioChecks
+```
+
+These checks use simulated Graph responses and require no credentials. Validate actual chat uploads and channel replies in your tenant after granting consent and deploying.
